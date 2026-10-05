@@ -124,6 +124,7 @@ public class LdapSecurityConfig extends AbstractAuthSecurityConfig {
       var extractor = new RbacLdapAuthoritiesExtractor(ctx, ldapCtx, props.getGroupFilterSearchBase());
 
       Optional.ofNullable(props.getGroupFilterSearchFilter()).ifPresent(extractor::setGroupSearchFilter);
+      Optional.ofNullable(props.getGroupRoleAttribute()).ifPresent(extractor::setGroupRoleAttribute);
       extractor.setRolePrefix("");
       extractor.setConvertToUpperCase(false);
       extractor.setSearchSubtree(true);
@@ -193,4 +194,3 @@ public class LdapSecurityConfig extends AbstractAuthSecurityConfig {
   }
 
 }
-
