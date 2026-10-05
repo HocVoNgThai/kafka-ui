@@ -464,7 +464,10 @@ public class ConsumerGroupService {
         .map(ConsumerGroupListing::groupId)
         .toList();
     return ac.describeConsumerGroups(sortedGroups)
-        .map(descrMap -> sortedGroups.stream().map(descrMap::get).toList());
+        .map(descrMap -> sortedGroups.stream()
+            .filter(descrMap::containsKey)
+            .map(descrMap::get)
+            .toList());
   }
 
   private <T> Stream<T> sortAndPaginate(Collection<T> collection,

@@ -78,6 +78,7 @@ import org.apache.kafka.common.acl.AclBindingFilter;
 import org.apache.kafka.common.acl.AclOperation;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.errors.ClusterAuthorizationException;
+import org.apache.kafka.common.errors.GroupAuthorizationException;
 import org.apache.kafka.common.errors.GroupIdNotFoundException;
 import org.apache.kafka.common.errors.GroupNotEmptyException;
 import org.apache.kafka.common.errors.GroupSubscribedToTopicException;
@@ -531,7 +532,9 @@ public class ReactiveAdminClient implements Closeable {
         groupIds,
         properties.getDescribeConsumerGroupsPartitionSize(),
         properties.getDescribeConsumerGroupsConcurrency(),
-        ids -> toMono(client.describeConsumerGroups(ids).all()),
+        ids -> toMonoWithExceptionFilter(
+            client.describeConsumerGroups(ids).describedGroups(),
+            GroupAuthorizationException.class),
         mapMerger()
     );
   }
@@ -542,14 +545,21 @@ public class ReactiveAdminClient implements Closeable {
                                                                             // all partitions if null passed
                                                                             @Nullable List<TopicPartition> partitions) {
     Function<Collection<String>, Mono<Map<String, Map<TopicPartition, OffsetAndMetadata>>>> call =
-        groups -> toMono(
-            client.listConsumerGroupOffsets(
-                groups.stream()
-                    .collect(Collectors.toMap(
-                        g -> g,
-                        g -> new ListConsumerGroupOffsetsSpec().topicPartitions(partitions)
-                    ))).all()
-        );
+        groups -> {
+          var result = client.listConsumerGroupOffsets(
+              groups.stream()
+                  .collect(Collectors.toMap(
+                      g -> g,
+                      g -> new ListConsumerGroupOffsetsSpec().topicPartitions(partitions)
+                  )));
+          return toMonoWithExceptionFilter(
+              groups.stream().collect(Collectors.toMap(
+                  Function.identity(),
+                  result::partitionsToOffsetAndMetadata
+              )),
+              GroupAuthorizationException.class
+          );
+        };
 
     Mono<Map<String, Map<TopicPartition, OffsetAndMetadata>>> merged = partitionCalls(
         consumerGroups,

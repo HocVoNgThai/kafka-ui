@@ -231,6 +231,71 @@ class ConsumerGroupServiceTest {
     );
   }
 
+  @Test
+  void getConsumerGroupsSkipsListingsWithoutDescriptions() {
+    ClustersProperties.Cluster clusterProperties = new ClustersProperties.Cluster();
+    clusterProperties.setName("test");
+
+    ClustersProperties clustersProperties = new ClustersProperties();
+    clustersProperties.getClusters().add(clusterProperties);
+
+    KafkaCluster cluster = KafkaCluster.builder()
+        .name("test")
+        .originalProperties(clusterProperties)
+        .build();
+
+    ReactiveAdminClient client = Mockito.mock(ReactiveAdminClient.class);
+    AdminClientService admin = Mockito.mock(AdminClientService.class);
+    Mockito.when(admin.get(cluster)).thenReturn(Mono.just(client));
+
+    String visibleGroup = "visible-group";
+    String missingGroup = "missing-group";
+    var description = new ConsumerGroupDescription(
+        visibleGroup,
+        false,
+        List.of(),
+        "",
+        ConsumerGroupState.EMPTY,
+        null
+    );
+
+    Mockito.when(client.listConsumerGroups()).thenReturn(Mono.just(List.of(
+        new ConsumerGroupListing(missingGroup, false),
+        new ConsumerGroupListing(visibleGroup, false)
+    )));
+    Mockito.when(client.describeConsumerGroups(List.of(missingGroup, visibleGroup)))
+        .thenReturn(Mono.just(Map.of(visibleGroup, description)));
+    Mockito.when(client.listConsumerGroupOffsets(List.of(visibleGroup), null))
+        .thenReturn(Mono.just(ImmutableTable.of()));
+    Mockito.when(client.listOffsets(Mockito.any(), Mockito.any(), Mockito.eq(false)))
+        .thenReturn(Mono.just(Map.of()));
+
+    StatisticsCache cache = Mockito.mock(StatisticsCache.class);
+    Mockito.when(cache.get(cluster)).thenReturn(Statistics.empty());
+
+    AccessControlService acl = Mockito.mock(AccessControlService.class);
+    Mockito.when(acl.isConsumerGroupAccessible(Mockito.anyString(), Mockito.eq(cluster.getName())))
+        .thenReturn(Mono.just(true));
+
+    ConsumerGroupService consumerGroupService =
+        new ConsumerGroupService(admin, acl, clustersProperties, cache);
+
+    ConsumerGroupService.ConsumerGroupsPage page = consumerGroupService.getConsumerGroups(
+        cluster,
+        OptionalInt.of(1),
+        OptionalInt.of(25),
+        "",
+        false,
+        ConsumerGroupOrderingDTO.NAME,
+        SortOrderDTO.ASC,
+        List.of()
+    ).block();
+
+    assertThat(page).isNotNull();
+    assertThat(page.consumerGroups()).hasSize(1);
+    assertThat(page.consumerGroups().get(0).getGroupId()).isEqualTo(visibleGroup);
+  }
+
   @ParameterizedTest
   @MethodSource("consumerGroupsLags")
   void calculateConsumerGroupsLags(String topic,
