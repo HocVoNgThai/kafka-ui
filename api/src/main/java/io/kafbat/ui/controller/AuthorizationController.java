@@ -8,6 +8,7 @@ import io.kafbat.ui.model.ResourceTypeDTO;
 import io.kafbat.ui.model.UserInfoDTO;
 import io.kafbat.ui.model.UserPermissionDTO;
 import io.kafbat.ui.model.rbac.Permission;
+import io.kafbat.ui.model.rbac.Resource;
 import io.kafbat.ui.service.ClustersStorage;
 import io.kafbat.ui.service.rbac.AccessControlService;
 import java.security.Principal;
@@ -53,7 +54,12 @@ public class AuthorizationController implements AuthorizationApi {
                     role.getClusters().stream().anyMatch(cluster::equalsIgnoreCase)))
                 .toList();
             if (!defaultRoleClusters.isEmpty()) {
-              userPermissions.addAll(mapPermissions(defaultRole.getPermissions(), defaultRoleClusters));
+              // Global checks use matching roles regardless of their cluster assignments.
+              var defaultPermissions = defaultRole.getPermissions().stream()
+                  .filter(permission -> matchingRoles.isEmpty()
+                      || permission.getResource() != Resource.APPLICATIONCONFIG)
+                  .toList();
+              userPermissions.addAll(mapPermissions(defaultPermissions, defaultRoleClusters));
             }
           }
           return List.copyOf(userPermissions);

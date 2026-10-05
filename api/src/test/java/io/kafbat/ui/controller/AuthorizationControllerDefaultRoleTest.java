@@ -11,6 +11,7 @@ import io.kafbat.ui.model.rbac.DefaultRole;
 import io.kafbat.ui.model.rbac.Permission;
 import io.kafbat.ui.model.rbac.Role;
 import io.kafbat.ui.model.rbac.Subject;
+import io.kafbat.ui.model.rbac.permission.ApplicationConfigAction;
 import io.kafbat.ui.model.rbac.permission.TopicAction;
 import io.kafbat.ui.model.rbac.provider.Provider;
 import io.kafbat.ui.service.ClustersStorage;
@@ -58,11 +59,66 @@ class AuthorizationControllerDefaultRoleTest {
   }
 
   @Test
+  void doesNotReportDefaultGlobalPermissionsWhenARoleMatches() {
+    var defaultRole = defaultRole();
+    defaultRole.getPermissions().add(applicationConfigPermission());
+    var fixture = fixture(List.of(role(List.of(permission("team-a-.*")))), defaultRole);
+    requireApplicationConfigPermission(fixture, false);
+    requirePermission(fixture, "cluster-b", "shared-events", true);
+  }
+
+  @Test
+  void doesNotReportDefaultGlobalPermissionsForAnEmptyExplicitRole() {
+    var defaultRole = defaultRole();
+    defaultRole.getPermissions().add(applicationConfigPermission());
+    var fixture = fixture(List.of(role(List.of())), defaultRole);
+    requireApplicationConfigPermission(fixture, false);
+  }
+
+  @Test
+  void reportsDefaultGlobalPermissionsWhenNoRolesMatch() {
+    var defaultRole = defaultRole();
+    defaultRole.getPermissions().add(applicationConfigPermission());
+    var fixture = fixture(List.of(), defaultRole);
+    requireApplicationConfigPermission(fixture, true);
+  }
+
+  @Test
+  void preservesExplicitGlobalPermissions() {
+    var fixture = fixture(List.of(role(List.of(applicationConfigPermission()))), defaultRole());
+    requireApplicationConfigPermission(fixture, true);
+    requirePermission(fixture, "cluster-b", "shared-events", true);
+  }
+
+  @Test
   void doesNotExposeDefaultPermissionsToAnonymousRequests() {
     var fixture = fixture(List.of(), defaultRole());
     var response = fixture.controller().getUserAuthInfo(null).block();
     if (response.getBody().getUserInfo() != null) {
       throw new AssertionError("Anonymous responses must not include user permissions");
+    }
+  }
+
+  private void requireApplicationConfigPermission(Fixture fixture, boolean expected) {
+    boolean backend = fixture.acs().validateAccess(AccessContext.builder()
+            .applicationConfigActions(ApplicationConfigAction.VIEW).build())
+        .thenReturn(true)
+        .onErrorReturn(AccessDeniedException.class, false)
+        .contextWrite(ReactiveSecurityContextHolder.withAuthentication(fixture.authentication()))
+        .block();
+    if (backend != expected) {
+      throw new AssertionError("Unexpected backend application config permission: " + backend);
+    }
+
+    var response = fixture.controller().getUserAuthInfo(null)
+        .contextWrite(ReactiveSecurityContextHolder.withAuthentication(fixture.authentication()))
+        .block();
+    boolean reported = response.getBody().getUserInfo().getPermissions().stream()
+        .anyMatch(permission -> permission.getResource() == ResourceTypeDTO.APPLICATIONCONFIG
+            && permission.getActions().contains(ActionDTO.VIEW));
+    if (reported != expected) {
+      throw new AssertionError("Reported application config permission differs from backend: expected "
+          + expected + ", actual " + reported);
     }
   }
 
@@ -130,6 +186,13 @@ class AuthorizationControllerDefaultRoleTest {
     var role = new DefaultRole();
     role.getPermissions().add(permission("shared-.*"));
     return role;
+  }
+
+  private Permission applicationConfigPermission() {
+    var permission = new Permission();
+    permission.setResource("applicationconfig");
+    permission.setActions(List.of("view"));
+    return permission;
   }
 
   private record Fixture(AccessControlService acs, AuthorizationController controller, Authentication authentication) {
