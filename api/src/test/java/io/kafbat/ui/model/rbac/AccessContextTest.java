@@ -104,6 +104,9 @@ class AccessContextTest {
       assertThat(allowed).isFalse();
     }
 
+    /**
+     * Resolves the restart alias to OPERATE for a named Connect cluster.
+     */
     @Test
     void shouldMapActionAliases() {
       SingleResourceAccess sra =

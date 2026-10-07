@@ -43,6 +43,12 @@ public class Permission {
     this.actions = actions;
   }
 
+  /**
+   * Validates required fields and gives migration guidance for named-resource permissions.
+   *
+   * @throws NullPointerException if the resource is absent
+   * @throws IllegalArgumentException if actions are absent or a required value is missing
+   */
   public void validate() {
     Preconditions.checkNotNull(resource, "resource cannot be null");
     Preconditions.checkArgument(isNotEmpty(actions), "Actions list for %s can't be null or empty", resource);
@@ -51,8 +57,16 @@ public class Permission {
       case SCHEMA -> actions.stream().anyMatch(action -> !MODIFY_GLOBAL_COMPATIBILITY.name().equalsIgnoreCase(action));
       default -> false;
     };
-    Preconditions.checkArgument(!requiresValue || (value != null && !value.isEmpty()),
-        "Value for resource %s can't be null or empty; use '.*' to match all names", resource);
+    boolean hasValue = value != null && !value.isEmpty();
+    if (!hasValue && requiresValue && resource == Resource.SCHEMA
+        && actions.stream().anyMatch(action -> ActionDTO.ALL.name().equalsIgnoreCase(action)
+            || MODIFY_GLOBAL_COMPATIBILITY.name().equalsIgnoreCase(action))) {
+      throw new IllegalArgumentException("Value for resource SCHEMA can't be null or empty; "
+          + "move MODIFY_GLOBAL_COMPATIBILITY to a separate permission without a value "
+          + "and specify the intended value pattern for named schema actions");
+    }
+    Preconditions.checkArgument(!requiresValue || hasValue,
+        "Value for resource %s can't be null or empty; specify the intended value pattern", resource);
   }
 
   public void transform() {
