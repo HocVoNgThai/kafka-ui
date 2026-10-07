@@ -25,6 +25,9 @@ import reactor.core.publisher.Mono;
 
 class GlobalErrorWebExceptionHandlerTest {
 
+  /**
+   * Redacts an unexpected error when the property is omitted, preserving other response fields.
+   */
   @Test
   void excludesStackTracesByDefault() {
     var response = errorResponse(null, "/unexpected", HttpStatus.INTERNAL_SERVER_ERROR);
@@ -34,6 +37,9 @@ class GlobalErrorWebExceptionHandlerTest {
     assertThat(response.getRequestId()).isNotEmpty();
   }
 
+  /**
+   * Preserves an explicit request to redact stack traces.
+   */
   @Test
   void explicitTrueExcludesStackTraces() {
     var response = errorResponse(true, "/unexpected", HttpStatus.INTERNAL_SERVER_ERROR);
@@ -41,6 +47,9 @@ class GlobalErrorWebExceptionHandlerTest {
     assertThat(response.getStackTrace()).isEqualTo("REDACTED FOR SECURITY REASONS");
   }
 
+  /**
+   * Preserves diagnostic stack traces when explicitly enabled.
+   */
   @Test
   void explicitFalsePreservesDiagnosticStackTraces() {
     var response = errorResponse(false, "/unexpected", HttpStatus.INTERNAL_SERVER_ERROR);
@@ -48,6 +57,9 @@ class GlobalErrorWebExceptionHandlerTest {
     assertThat(response.getStackTrace()).contains("java.lang.IllegalStateException: test failure");
   }
 
+  /**
+   * Applies default redaction to status errors as well as unexpected errors.
+   */
   @Test
   void excludesStackTracesFromStatusErrorsByDefault() {
     var response = errorResponse(null, "/bad-request", HttpStatus.BAD_REQUEST);
@@ -56,6 +68,14 @@ class GlobalErrorWebExceptionHandlerTest {
     assertThat(response.getMessage()).isEqualTo("invalid request");
   }
 
+  /**
+   * Reads an error through a mock WebFlux context without opening a server socket.
+   *
+   * @param excludeStackTraces explicit property value, or null to test the default
+   * @param path fixture route that raises the error
+   * @param status expected HTTP response status
+   * @return decoded error response
+   */
   private ErrorResponseDTO errorResponse(Boolean excludeStackTraces, String path, HttpStatus status) {
     try (var context = new AnnotationConfigApplicationContext()) {
       if (excludeStackTraces != null) {
@@ -76,16 +96,25 @@ class GlobalErrorWebExceptionHandlerTest {
   @Import(GlobalErrorWebExceptionHandler.class)
   static class TestConfiguration {
 
+    /**
+     * Resolves the handler's property placeholder against the fixture environment.
+     */
     @Bean
     static PropertySourcesPlaceholderConfigurer propertyConfigurer() {
       return new PropertySourcesPlaceholderConfigurer();
     }
 
+    /**
+     * Stores fixture exceptions for the actual reactive error handler.
+     */
     @Bean
     ErrorAttributes errorAttributes() {
       return new DefaultErrorAttributes();
     }
 
+    /**
+     * Supplies unexpected-error and status-error routes for both rendering paths.
+     */
     @Bean
     RouterFunction<ServerResponse> routes() {
       return RouterFunctions.route(GET("/unexpected"), request -> Mono.error(new IllegalStateException("test failure")))
