@@ -1,5 +1,6 @@
 package io.kafbat.ui.model.rbac;
 
+import static io.kafbat.ui.model.rbac.permission.SchemaAction.MODIFY_GLOBAL_COMPATIBILITY;
 import static org.apache.commons.collections.CollectionUtils.isNotEmpty;
 
 import com.google.common.base.Preconditions;
@@ -45,6 +46,13 @@ public class Permission {
   public void validate() {
     Preconditions.checkNotNull(resource, "resource cannot be null");
     Preconditions.checkArgument(isNotEmpty(actions), "Actions list for %s can't be null or empty", resource);
+    boolean requiresValue = switch (resource) {
+      case TOPIC, CONSUMER, CONNECT, CONNECTOR -> true;
+      case SCHEMA -> actions.stream().anyMatch(action -> !MODIFY_GLOBAL_COMPATIBILITY.name().equalsIgnoreCase(action));
+      default -> false;
+    };
+    Preconditions.checkArgument(!requiresValue || (value != null && !value.isEmpty()),
+        "Value for resource %s can't be null or empty; use '.*' to match all names", resource);
   }
 
   public void transform() {
