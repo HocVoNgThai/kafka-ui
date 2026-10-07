@@ -38,7 +38,7 @@ import reactor.core.publisher.Mono;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalErrorWebExceptionHandler extends AbstractErrorWebExceptionHandler {
 
-  @Value("${http.error.excludeStackTraces:false}")
+  @Value("${http.error.excludeStackTraces:true}")
   private boolean excludeStackTraces;
 
   public GlobalErrorWebExceptionHandler(ErrorAttributes errorAttributes,
